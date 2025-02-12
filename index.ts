@@ -23,6 +23,6 @@ mongoose
   })
   .catch((err) => console.log(err));
 
-app.listen(port, () => {
-  console.log(`Server is Fire at http://localhost:${port}`);
+app.listen(8000, "0.0.0.0", () => {
+  console.log(`Server is Fire at http://0.0.0.0:${port}`);
 });

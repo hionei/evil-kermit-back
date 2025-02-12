@@ -3,7 +3,7 @@ import glob from "glob";
 import fs from "fs";
 import dotenv from "dotenv";
 dotenv.config();
-const RPC_URL = "wss://ethereum-sepolia-rpc.publicnode.com";
+const RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com";
 
 export const keepFiles = (limit: number, symbol: string) => {
   const path = "learn/" + symbol;
