@@ -2,6 +2,7 @@ import { GraphQLClient } from "graphql-request";
 import { Request, Response, query } from "express";
 import { getWeb3, getWeb3Contract } from "../services/web3";
 import dotenv from "dotenv";
+import fs from "fs";
 import { currentUnixTime } from "../utils/helpers";
 import Users from "../models/users";
 import { selectionSetMatchesResult } from "@apollo/client/cache/inmemory/helpers";
@@ -79,73 +80,63 @@ class ReadController {
 
     this.lastBlock = latestBlock;
 
-    events.forEach(async (event) => {
-      const existingRecord = await Users.findOne({
-        transactionHash: event.transactionHash
-      });
+    let existingData = [];
 
-      if (!existingRecord) {
+    const filePath = "users.json"
+
+    if (fs.existsSync(filePath)) {
+      try {
+        const fileContent = fs.readFileSync(filePath, "utf8");
+        existingData = JSON.parse(fileContent);
+      } catch (err) {
+        console.log("Error reading JSON file", err);
+      }
+    }
+
+    events.forEach(async (event) => {
+      const transactionExists = existingData.some((record) => record.transactionHash == event.transactionHash)
+      if (!transactionExists) {
         console.log(
           `✅ New Purchase: ${event.returnValues.user} bought ${event.returnValues.tokensBought} tokens in phase ${event.returnValues.currentStep} transaction hash: ${event.transactionHash}`
         );
-        await Users.findOneAndUpdate(
-          {
-              address: event.returnValues.user,
-              phase: Number(event.returnValues.currentStep),
-              transactionHash: event.transactionHash
-          },
-          { 
-            $inc: { amount: Number(event.returnValues.tokensBought) }, 
-          },
-          { upsert: true, new: true }
-        );
-      } else {
-        console.log(`⚠️ Skipping update: Duplicate transaction detected (${event.transactionHash})`);
-      }
-    })
 
+        existingData.push({
+          address: event.returnValues.user,
+          phase: Number(event.returnValues.currentStep),
+          amount: Number(event.returnValues.tokensBought),
+          transactionHash: event.transactionHash
+        })
+      } else {
+        console.log(
+          `⚠️ Skipping update: Duplicate transaction detected (${event.transactionHash})`
+        );
+      }
+      fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2));
+    })
   };
 
   getPastEvents = async (req: Request, res: Response) => {
-    this.web3 = getWeb3();
-
-    const presaleContract = await getWeb3Contract(this.web3, addr, "presale");
-    const latestBlock = await this.web3.eth.getBlockNumber();
-
-    const events = await presaleContract.getPastEvents("TokensBought", {
-      fromBlock: Number(latestBlock) - 5000,
-      toBlock: "latest",
-    });
-
-    events.forEach(async (event) => {
-      console.log(
-        `✅ New Purchase: ${event.returnValues.user} bought ${event.returnValues.tokensBought} tokens in phase ${event.returnValues.currentStep}`
-      );
-      await Users.findOneAndUpdate(
-        {
-            address: event.returnValues.user,
-            phase: Number(event.returnValues.currentStep),
-            transactionHash: event.transactionHash
-        },
-        { $inc: { amount: Number(event.returnValues.tokensBought) } },
-        { upsert: true, new: true }
-      );
-    })
-
     return res.json({ result: [] });
   };
 
   getUsers = async (req: Request, res: Response) => {
-    const users = await Users.find({});
+    const eventsFilePath = "users.json";
+    let existingData = [];
 
     let returnArray = [[],[],[],[]];
+    if (fs.existsSync(eventsFilePath)) {
+      try {
+        const fileContent = fs.readFileSync(eventsFilePath, "utf8");
+        existingData = JSON.parse(fileContent);
+      } catch (error) {
+        console.error("Error reading JSON file:", error);
+      }
+    }
 
-    users.map((user) => {
-      returnArray[user.phase].push({
-        address: user.address,
-        amount: user.amount,
-      });
-    });
+    for (let data of existingData) {
+      returnArray[data.phase].push({address: data.address, amount: data.amount});
+    }
+
     return res.json({ result: returnArray });
   };
 }
